@@ -1,3 +1,4 @@
+// 1. MAIN TOP-LEVEL DATAPATH
 module datapath (
     input clk,
     input reset,
@@ -9,13 +10,12 @@ module datapath (
     output mem_read
 );
 
-    // Control wires
     wire reg_dst, alu_src, mem_to_reg, reg_write, branch;
     wire [1:0] alu_op;
     wire [2:0] alu_control;
     wire zero;
 
-    // Control Unit (from Week 4)
+    // Control Unit Decoder
     decoder main_decoder (
         .opcode(instr[31:26]),
         .reg_dst(reg_dst),
@@ -35,7 +35,7 @@ module datapath (
         .alu_control(alu_control)
     );
 
-    // Register File Mux and Wires
+    // Register File Infrastructure
     wire [4:0] write_reg = reg_dst ? instr[15:11] : instr[20:16];
     wire [31:0] reg_data1, reg_data2;
     wire [31:0] reg_write_data = mem_to_reg ? read_data : alu_out;
@@ -51,14 +51,14 @@ module datapath (
         .read_data2(reg_data2)
     );
 
-    // Sign Extension
+    // Sign Extension 16 to 32 bits
     wire [31:0] sign_imm = {{16{instr[15]}}, instr[15:0]};
 
-    // ALU Source Mux and Wires
+    // ALU Path Routing
     wire [31:0] src_b = alu_src ? sign_imm : reg_data2;
     assign write_data = reg_data2; 
 
-    // Execution Unit
+    // Execution Core
     alu main_alu (
         .a(reg_data1),
         .b(src_b),
@@ -69,10 +69,62 @@ module datapath (
 
 endmodule
 
-// ==========================================================
-// Helper Sub-modules
-// ==========================================================
+// 2. INSTRUCTION DECODER (Truth-Table Compliant)
+module decoder (
+    input [5:0] opcode,
+    output reg reg_dst,
+    output reg alu_src,
+    output reg mem_to_reg,
+    output reg reg_write,
+    output reg mem_read,
+    output reg mem_write,
+    output reg branch,
+    output reg [1:0] alu_op
+);
 
+    always @(*) begin
+        // Reset every single line to prevent latch generation/state leakage
+        reg_dst    = 0;
+        alu_src    = 0;
+        mem_to_reg = 0;
+        reg_write  = 0;
+        mem_read   = 0;
+        mem_write  = 0;
+        branch     = 0;
+        alu_op     = 2'b00;
+
+        case (opcode)
+            6'b000000: begin // R-type
+                reg_dst   = 1;
+                reg_write = 1;
+                alu_op    = 2'b10;
+            end
+            6'b100011: begin // lw
+                reg_dst    = 0; // Explicitly pull rt path
+                alu_src    = 1;
+                mem_to_reg = 1;
+                reg_write  = 1;
+                mem_read   = 1;
+            end
+            6'b101011: begin // sw
+                reg_dst    = 0; 
+                alu_src    = 1;
+                mem_to_reg = 0; 
+                reg_write  = 0; // Fixed: Protect RF from garbage overwrite
+                mem_write  = 1;
+            end
+            6'b000100: begin // beq
+                branch = 1;
+                alu_op = 2'b01;
+            end
+            default: begin
+                // Safe defaults maintained
+            end
+        endcase
+    end
+endmodule
+
+// 3. ALU CONTROL UNIT
 module alu_control_unit (
     input [1:0] alu_op,
     input [5:0] funct,
@@ -80,9 +132,9 @@ module alu_control_unit (
 );
     always @(*) begin
         case (alu_op)
-            2'b00: alu_control = 3'b010; // add for lw/sw
-            2'b01: alu_control = 3'b110; // sub for beq
-            2'b10: begin                 // R-type
+            2'b00: alu_control = 3'b010; // add for memory addresses
+            2'b01: alu_control = 3'b110; // subtract for comparisons
+            2'b10: begin                 // R-types
                 case (funct)
                     6'b100000: alu_control = 3'b010; // add
                     6'b100010: alu_control = 3'b110; // sub
@@ -96,6 +148,7 @@ module alu_control_unit (
     end
 endmodule
 
+// 4. REGISTER FILE
 module reg_file (
     input clk,
     input reg_write,
@@ -108,6 +161,7 @@ module reg_file (
 );
     reg [31:0] rf [31:0];
 
+    // Constrain address 0 to constant zero ground
     assign read_data1 = (read_reg1 == 0) ? 32'b0 : rf[read_reg1];
     assign read_data2 = (read_reg2 == 0) ? 32'b0 : rf[read_reg2];
 
@@ -118,6 +172,7 @@ module reg_file (
     end
 endmodule
 
+// 5. ALU
 module alu (
     input [31:0] a,
     input [31:0] b,
