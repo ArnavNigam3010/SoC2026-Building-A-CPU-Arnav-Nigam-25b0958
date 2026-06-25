@@ -12,6 +12,7 @@ module datapath_tb;
     wire mem_write;
     wire mem_read;
 
+    // UUT Verification
     datapath uut (
         .clk(clk),
         .reset(reset),
@@ -22,10 +23,12 @@ module datapath_tb;
         .mem_write(mem_write),
         .mem_read(mem_read)
     );
-
     always #5 clk = ~clk;
 
     initial begin
+        $dumpfile("dump.vcd");
+        $dumpvars(0, datapath_tb);
+
         clk = 0;
         reset = 1;
         instr = 0;
@@ -34,16 +37,16 @@ module datapath_tb;
         
         reset = 0;
 
-        // 1. ADD: add $t0, $s1, $s2
+        // 1. ADD Execution Vector: add $t0, $s1, $s2
         instr = 32'b000000_10001_10010_01000_00000_100000; 
         #10;
 
-        // 2. LW: lw $t1, 4($s3)
+        // 2. LW Execution Vector: lw $t1, 4($s3)
         instr = 32'b100011_10011_01001_0000000000000100;
         read_data = 32'hA5A5A5A5; 
         #10;
 
-        // 3. SW: sw $t1, 8($s4)
+        // 3. SW Execution Vector: sw $t1, 8($s4)
         instr = 32'b101011_10100_01001_0000000000001000;
         #10;
 
